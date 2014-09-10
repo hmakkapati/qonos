@@ -19,7 +19,11 @@ import webob.exc
 import qonos.api.v1.api_utils as api_utils
 from qonos.common import exception
 import qonos.db
+import qonos.openstack.common.log as logging
 from qonos.openstack.common import wsgi
+
+
+LOG = logging.getLogger(__name__)
 
 
 class ScheduleMetadataController(object):
@@ -28,25 +32,35 @@ class ScheduleMetadataController(object):
         self.db_api = db_api or qonos.db.get_api()
 
     def list(self, request, schedule_id):
+        LOG.debug('Start: list metadata for schedule: %s' % schedule_id)
         try:
             metadata = self.db_api.schedule_meta_get_all(schedule_id)
         except exception.NotFound, e:
+            LOG.exception('Failed: list metadata for schedule: %s' %
+                          schedule_id)
             raise webob.exc.HTTPNotFound(explanation=e)
+        LOG.debug('Completed: list metadata for schedule: %s' % schedule_id)
         return {'metadata': api_utils.serialize_metadata(metadata)}
 
     def update(self, request, schedule_id, body):
+        LOG.debug('Start: update metadata for schedule: %s' % schedule_id)
         metadata = body['metadata']
         try:
             new_meta = api_utils.deserialize_metadata(metadata)
         except exception.MissingValue, e:
+            LOG.exception('Failed: update metadata for schedule: %s' %
+                          schedule_id)
             raise webob.exc.HTTPBadRequest(explanation=e)
 
         try:
             updated_meta = self.db_api.schedule_metadata_update(schedule_id,
                                                                 new_meta)
         except exception.NotFound, e:
+            LOG.exception('Failed: update metadata for schedule: %s' %
+                          schedule_id)
             raise webob.exc.HTTPNotFound(explanation=e)
 
+        LOG.debug('Completed: update metadata for schedule: %s' % schedule_id)
         return {'metadata': api_utils.serialize_metadata(updated_meta)}
 
 

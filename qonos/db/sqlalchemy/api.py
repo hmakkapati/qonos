@@ -237,6 +237,8 @@ def wrap_db_error(f):
 
 @force_dict
 def schedule_create(schedule_values):
+    LOG.debug('Start: Creating schedule in DB with values: %s' %
+              str(schedule_values))
     db_utils.validate_schedule_values(schedule_values)
     # make a copy so we can remove 'schedule_metadata'
     # without affecting the caller
@@ -253,6 +255,8 @@ def schedule_create(schedule_values):
     schedule_ref.update(values)
     schedule_ref.save(session=session)
 
+    LOG.debug('Completed: Creating schedule in DB with values: %s' %
+              str(schedule_values))
     return _schedule_get_by_id(schedule_ref['id'])
 
 
@@ -322,6 +326,7 @@ def paginate_query(query, model, sort_keys, limit=None, marker=None):
 
 @force_dict
 def schedule_get_all(filter_args={}):
+    LOG.debug('Start: Querying DB for all schedules')
     session = get_session()
     query = session.query(models.Schedule)\
                    .options(sa_orm.joinedload_all(
@@ -359,10 +364,12 @@ def schedule_get_all(filter_args={}):
                            limit=filter_args.get('limit'),
                            marker=marker_schedule)
 
+    LOG.debug('Completed: Querying DB for all schedules')
     return query.all()
 
 
 def _schedule_get_by_id(schedule_id, session=None):
+    LOG.debug('Start: Querying DB for schedule by id: %s' % schedule_id)
     session = session or get_session()
     try:
         schedule = session.query(models.Schedule)\
@@ -370,8 +377,11 @@ def _schedule_get_by_id(schedule_id, session=None):
                           .filter_by(id=schedule_id)\
                           .one()
     except sa_orm.exc.NoResultFound:
+        LOG.exception('Failed: Querying DB for schedule by id: %s' %
+                      schedule_id)
         raise exception.NotFound()
 
+    LOG.debug('Completed: Querying DB for schedule by id: %s' % schedule_id)
     return schedule
 
 
@@ -384,6 +394,7 @@ def schedule_get_by_id(schedule_id):
 def schedule_update(schedule_id, schedule_values):
     # make a copy so we can remove 'schedule_metadata'
     # without affecting the caller
+    LOG.debug('Start: Updating schedule: %s in DB' % schedule_id)
     values = schedule_values.copy()
     session = get_session()
     schedule_ref = _schedule_get_by_id(schedule_id, session)
@@ -394,6 +405,7 @@ def schedule_update(schedule_id, schedule_values):
 
     schedule_ref.update(values)
     schedule_ref.save(session=session)
+    LOG.debug('Completed: Updating schedule: %s in DB' % schedule_id)
     return _schedule_get_by_id(schedule_id)
 
 
@@ -434,22 +446,29 @@ def _schedule_metadata_update_in_place(schedule, metadata):
 
 
 def schedule_delete(schedule_id):
+    LOG.debug('Start: Deleting schedule: %s in DB' % schedule_id)
     session = get_session()
     schedule_ref = _schedule_get_by_id(schedule_id, session)
     schedule_ref.delete(session=session)
+    LOG.debug('Completed: Deleting schedule: %s in DB' % schedule_id)
 
 
 def _set_schedule_metadata(schedule_ref, metadata):
+    msg = 'Start: Setting metadata in DB for schedule: %s'
+    LOG.debug(msg % schedule_ref['id'])
     for metadatum in metadata:
         metadata_ref = models.ScheduleMetadata()
         metadata_ref.update(metadatum)
         schedule_ref.schedule_metadata.append(metadata_ref)
+    msg = 'Completed: Setting metadata in DB for schedule: %s'
+    LOG.debug(msg % schedule_ref['id'])
 
 #################### Schedule Metadata methods
 
 
 @force_dict
 def schedule_meta_create(schedule_id, values):
+    LOG.debug('Start: Creating metadata for schedule: %s' % schedule_id)
     session = get_session()
     _schedule_get_by_id(schedule_id, session)
     meta_ref = models.ScheduleMetadata()
@@ -459,22 +478,29 @@ def schedule_meta_create(schedule_id, values):
     try:
         meta_ref.save(session=session)
     except sqlalchemy.exc.IntegrityError:
+        LOG.exception('Failed: Creating metadata for schedule: %s' %
+                      schedule_id)
         raise exception.Duplicate()
-
+    LOG.debug('Completed: Creating metadata for schedule: %s' % schedule_id)
     return _schedule_meta_get(schedule_id, values['key'])
 
 
 @force_dict
 def schedule_meta_get_all(schedule_id):
+    LOG.debug('Start: Querying DB for metadata of schedule: %s' % schedule_id)
     session = get_session()
     _schedule_get_by_id(schedule_id, session)
     query = session.query(models.ScheduleMetadata)\
                    .filter_by(schedule_id=schedule_id)
 
+    LOG.debug('Completed: Querying DB for metadata of schedule: %s' %
+              schedule_id)
     return query.all()
 
 
 def _schedule_meta_get(schedule_id, key, session=None):
+    msg = 'Start: Querying DB for metadata: %s of schedule: %s'
+    LOG.debug(msg % (key, schedule_id))
     session = session or get_session()
     try:
         _schedule_get_by_id(schedule_id, session)
@@ -487,8 +513,12 @@ def _schedule_meta_get(schedule_id, key, session=None):
                       .filter_by(key=key)\
                       .one()
     except sa_orm.exc.NoResultFound:
+        msg = 'Failed: Querying DB for metadata: %s of schedule: %s'
+        LOG.debug(msg % (key, schedule_id))
         raise exception.NotFound()
 
+    msg = 'Completed: Querying DB for metadata: %s of schedule: %s'
+    LOG.debug(msg % (key, schedule_id))
     return meta
 
 
@@ -503,20 +533,26 @@ def _schedule_meta_update(schedule_id, key, values):
 
 @force_dict
 def schedule_metadata_update(schedule_id, values):
+    LOG.debug('Start: Updating metadata in DB for schedule: %s' % schedule_id)
     session = get_session()
     schedule = _schedule_get_by_id(schedule_id, session)
     _schedule_metadata_update_in_place(schedule, values)
 
     schedule.save(session=session)
 
+    LOG.debug('Completed: Updating metadata in DB for schedule: %s' %
+              schedule_id)
     return schedule_meta_get_all(schedule_id)
 
 
 def schedule_meta_delete(schedule_id, key):
+    LOG.debug('Start: Deleting metadata in DB for schedule: %s' % schedule_id)
     session = get_session()
     _schedule_get_by_id(schedule_id, session)
     meta_ref = _schedule_meta_get(schedule_id, key, session)
     meta_ref.delete(session=session)
+    LOG.debug('Completed: Deleting metadata in DB for schedule: %s' %
+              schedule_id)
 
 
 ##################### Worker methods
@@ -524,6 +560,7 @@ def schedule_meta_delete(schedule_id, key):
 
 @force_dict
 def worker_get_all(params={}):
+    LOG.debug('Start: Querying DB for all workers')
     session = get_session()
     query = session.query(models.Worker)
 
@@ -534,28 +571,34 @@ def worker_get_all(params={}):
     query = paginate_query(query, models.Worker, ['id'],
                            limit=params.get('limit'), marker=marker_worker)
 
+    LOG.debug('Completed: Querying DB for all workers')
     return query.all()
 
 
 @force_dict
 def worker_create(values):
+    LOG.debug('Start: Creating worker in DB with values: %s' % str(values))
     session = get_session()
     worker_ref = models.Worker()
     worker_ref.update(values)
     worker_ref.save(session=session)
 
+    LOG.debug('Completed: Creating worker in DB with values: %s' % str(values))
     return _worker_get_by_id(worker_ref['id'])
 
 
 def _worker_get_by_id(worker_id):
+    LOG.debug('Start: Querying DB for worker with id: %s' % worker_id)
     session = get_session()
     query = session.query(models.Worker).filter_by(id=worker_id)
 
     try:
         worker = query.one()
     except sa_orm.exc.NoResultFound:
+        LOG.exception('Failed: Querying DB for worker with id: %s' % worker_id)
         raise exception.NotFound
 
+    LOG.debug('Completed: Querying DB for worker with id: %s' % worker_id)
     return worker
 
 
@@ -565,11 +608,14 @@ def worker_get_by_id(worker_id):
 
 
 def worker_delete(worker_id):
+    LOG.debug('Start: Deleting worker: %s in DB' % worker_id)
     session = get_session()
 
     with session.begin():
         worker = _worker_get_by_id(worker_id)
         worker.delete(session=session)
+
+    LOG.debug('Completed: Deleting worker: %s in DB' % worker_id)
 
 
 #################### Job methods
@@ -577,6 +623,7 @@ def worker_delete(worker_id):
 
 @force_dict
 def job_create(job_values):
+    LOG.debug('Start: Creating job in DB with values: %s' % str(job_values))
     db_utils.validate_job_values(job_values)
     values = job_values.copy()
     session = get_session()
@@ -590,6 +637,8 @@ def job_create(job_values):
     job_ref.update(values)
     job_ref.save(session=session)
 
+    LOG.debug('Completed: Creating job in DB with values: %s' %
+              str(job_values))
     return _job_get_by_id(job_ref['id'])
 
 
@@ -605,6 +654,7 @@ def _filter_query_on_attributes(query, params, model, allowed_filters):
 
 @force_dict
 def job_get_all(params={}):
+    LOG.debug('Start: Querying DB for all jobs')
     session = get_session()
     query = session.query(models.Job)\
                    .options(sa_orm.subqueryload('job_metadata'))
@@ -628,10 +678,12 @@ def job_get_all(params={}):
     query = paginate_query(query, models.Job, ['id'],
                            limit=params.get('limit'), marker=marker_job)
 
+    LOG.debug('Completed: Querying DB for all jobs')
     return query.all()
 
 
 def _job_get_by_id(job_id, session=None):
+    LOG.debug('Start: Querying DB for job by id: %s' % job_id)
     session = session or get_session()
     try:
         job = session.query(models.Job)\
@@ -639,8 +691,10 @@ def _job_get_by_id(job_id, session=None):
                      .filter_by(id=job_id)\
                      .one()
     except sa_orm.exc.NoResultFound:
+        LOG.exception('Failed: Querying DB for job by id: %s' % job_id)
         raise exception.NotFound()
 
+    LOG.debug('Completed: Querying DB for job by id: %s' % job_id)
     return job
 
 
@@ -657,6 +711,7 @@ def job_updated_at_get_by_id(job_id):
 def job_get_and_assign_next_by_action(action, worker_id, new_timeout):
     """Get the next available job for the given action and assign it
     to the worker for worker_id."""
+    LOG.debug('Start: Querying DB to assign a job for worker: %s' % worker_id)
     now = timeutils.utcnow()
     session = get_session()
 
@@ -666,6 +721,8 @@ def job_get_and_assign_next_by_action(action, worker_id, new_timeout):
         return None
 
     job_id = job_ref['id']
+    msg = 'Start: Assigning job: %s to worker: %s in DB'
+    LOG.debug(msg % (job_id, worker_id))
     try:
         job_values = {'worker_id': worker_id,
                       'timeout': new_timeout,
@@ -673,6 +730,8 @@ def job_get_and_assign_next_by_action(action, worker_id, new_timeout):
 
         job_ref.update(job_values)
         job_ref.save(session=session)
+        msg = 'Completed: Assigning job: %s to worker: %s in DB'
+        LOG.debug(msg % (job_id, worker_id))
     except sa_orm.exc.NoResultFound:
         #In case the job was deleted during assignment return nothing
         LOG.warn(_('[JOB2WORKER] NoResultFound:'
@@ -694,13 +753,15 @@ def job_get_and_assign_next_by_action(action, worker_id, new_timeout):
     LOG.info(_('[JOB2WORKER] Assigned Job: %(job_id)s'
                ' To Worker: %(worker_id)s')
              % {'job_id': job_id, 'worker_id': job_values['worker_id']})
-
+    LOG.debug('Completed: Querying DB to assign a job for worker: %s' %
+              worker_id)
     return _job_get_by_id(job_id)
 
 
 def _job_get_next_by_action(session, now, action):
     # Round off 'now' to minute precision to allow the SQL query cache to
     # do more work
+    LOG.debug('Start: Querying DB for next job with now: %s' % str(now))
     now_round_off = now.replace(second=0, microsecond=0)
     statuses = ['DONE', 'CANCELLED', 'HARD_TIMED_OUT', 'MAX_RETRIED']
     job_ref = session.query(models.Job)\
@@ -712,23 +773,27 @@ def _job_get_next_by_action(session, now, action):
                            models.Job.timeout <= now_round_off))\
         .order_by(models.Job.updated_at.asc())\
         .first()
+    LOG.debug('Completed: Querying DB for next job with now: %s' % str(now))
     return job_ref
 
 
 def _jobs_cleanup_hard_timed_out():
     """Find all jobs with hard_timeout values which have passed
     and delete them, logging the timeout / failure as appropriate"""
+    LOG.debug('Start: Deleting hard timedout jobs from DB')
     now = timeutils.utcnow()
     session = get_session()
     num_del = session.query(models.Job)\
         .filter(models.Job.hard_timeout <= now)\
         .delete()
     session.flush()
+    LOG.debug('Completed: Deleting hard timedout jobs from DB')
     return num_del
 
 
 @force_dict
 def job_update(job_id, job_values):
+    LOG.debug('Start: Updating job: %s in DB' % job_id)
     # make a copy so we can remove 'job_metadata'
     # without affecting the caller
     values = job_values.copy()
@@ -741,6 +806,7 @@ def job_update(job_id, job_values):
 
     job_ref.update(values)
     job_ref.save(session=session)
+    LOG.debug('Completed: Updating job: %s in DB' % job_id)
     return _job_get_by_id(job_id)
 
 
@@ -767,20 +833,25 @@ def _job_metadata_update_in_place(job, metadata):
 
 
 def job_delete(job_id):
+    LOG.debug('Start: Deleting job: %s in DB' % job_id)
     session = get_session()
     job_ref = _job_get_by_id(job_id)
     job_ref.delete(session=session)
+    LOG.debug('Completed: Deleting job: %s in DB' % job_id)
 
 
 def _set_job_metadata(job_ref, metadata):
+    LOG.debug('Start: Setting metadata in DB for job: %s' % job_ref['id'])
     for metadatum in metadata:
         metadata_ref = models.JobMetadata()
         metadata_ref.update(metadatum)
         job_ref.job_metadata.append(metadata_ref)
+    LOG.debug('Completed: Setting metadata in DB for job: %s' % job_ref['id'])
 
 
 @force_dict
 def job_meta_create(job_id, values):
+    LOG.debug('Start: Creating metadata in DB for job: %s' % job_id)
     values['job_id'] = job_id
     session = get_session()
     meta_ref = models.JobMetadata()
@@ -789,36 +860,44 @@ def job_meta_create(job_id, values):
     try:
         meta_ref.save(session=session)
     except sqlalchemy.exc.IntegrityError:
+        LOG.exception('Failed: Creating metadata in DB for job: %s' % job_id)
         raise exception.Duplicate()
 
+    LOG.debug('Completed: Creating metadata in DB for job: %s' % job_id)
     return _job_meta_get_by_id(meta_ref['id'])
 
 
 def _job_meta_get_by_id(meta_id):
+    LOG.debug('Start: Querying DB for metadata by id: %s' % meta_id)
     session = get_session()
     try:
         meta = session.query(models.JobMetadata)\
                       .filter_by(id=meta_id)\
                       .one()
     except sa_orm.exc.NoResultFound:
+        LOG.exception('Failed: Querying DB for metadata by id: %s' % meta_id)
         raise exception.NotFound()
 
+    LOG.debug('Completed: Querying DB for metadata by id: %s' % meta_id)
     return meta
 
 
 def _job_meta_get_all_by_job_id(job_id):
+    LOG.debug('Start: Querying DB for metadata of job: %s' % job_id)
     session = get_session()
     try:
         meta = session.query(models.JobMetadata)\
                       .filter_by(job_id=job_id)\
                       .all()
     except sa_orm.exc.NoResultFound:
+        LOG.exception('Failed: Querying DB for metadata of job: %s' % job_id)
         raise exception.NotFound()
-
+    LOG.debug('Completed: Querying DB for metadata of job: %s' % job_id)
     return meta
 
 
 def _job_meta_get(job_id, key):
+    LOG.debug('Start: Querying DB for metadata:%s of job: %s ' % (key, job_id))
     session = get_session()
     try:
         meta = session.query(models.JobMetadata)\
@@ -826,8 +905,11 @@ def _job_meta_get(job_id, key):
                       .filter_by(key=key)\
                       .one()
     except sa_orm.exc.NoResultFound:
+        msg = 'Failed: Querying DB for metadata:%s of job: %s '
+        LOG.exception(msg % (key, job_id))
         raise exception.NotFound()
-
+    msg = 'Completed: Querying DB for metadata:%s of job: %s'
+    LOG.debug(msg % (key, job_id))
     return meta
 
 
@@ -838,35 +920,43 @@ def job_meta_get_all_by_job_id(job_id):
 
 @force_dict
 def job_metadata_update(job_id, values):
+    LOG.debug('Start: Updating DB with metadata of job: %s ' % job_id)
     session = get_session()
     job = _job_get_by_id(job_id, session)
     _job_metadata_update_in_place(job, values)
 
     job.save(session=session)
 
+    LOG.debug('Completed: Updating DB with metadata of job: %s ' % job_id)
     return job_meta_get_all_by_job_id(job_id)
 
 
 ##################### Job fault methods
 
 def job_fault_latest_for_job_id(job_id):
+    LOG.debug('Start: Querying DB for job fault of job: %s' % job_id)
     session = get_session()
     try:
         job_fault = session.query(models.JobFault)\
             .filter_by(job_id=job_id)\
             .order_by(models.JobFault.created_at.desc())\
             .first()
+        LOG.debug('Completed: Querying DB for job fault of job: %s' % job_id)
         return job_fault
     except sa_orm.exc.NoResultFound:
+        LOG.debug('Completed: Querying DB for job fault of job: %s' % job_id)
         return None
 
 
 @force_dict
 def job_fault_create(values):
+    msg = 'Start: Creating new job fault in DB with values: %s'
+    LOG.debug(msg % str(values))
     session = get_session()
     job_fault_ref = models.JobFault()
     job_fault_ref.update(values)
 
     job_fault_ref.save(session=session)
-
+    msg = 'Completed: Creating new job fault in DB with values: %s'
+    LOG.debug(msg % str(values))
     return job_fault_ref

@@ -19,7 +19,11 @@ import webob.exc
 import qonos.api.v1.api_utils as api_utils
 from qonos.common import exception
 import qonos.db
+import qonos.openstack.common.log as logging
 from qonos.openstack.common import wsgi
+
+
+LOG = logging.getLogger(__name__)
 
 
 class JobMetadataController(object):
@@ -28,19 +32,25 @@ class JobMetadataController(object):
         self.db_api = db_api or qonos.db.get_api()
 
     def list(self, request, job_id):
+        LOG.debug('Start: list metadata for job: %s' % job_id)
         try:
             metadata = self.db_api.job_meta_get_all_by_job_id(job_id)
         except exception.NotFound, e:
+            LOG.exception('Failed: list metadata for job: %s' % job_id)
             raise webob.exc.HTTPNotFound(explanation=e)
+        LOG.debug('Completed: list metadata for job: %s' % job_id)
         return {'metadata': api_utils.serialize_metadata(metadata)}
 
     def update(self, request, job_id, body):
+        LOG.debug('Start: update metadata for job: %s' % job_id)
         metadata = body['metadata']
         new_meta = api_utils.deserialize_metadata(metadata)
         try:
             updated_meta = self.db_api.job_metadata_update(job_id, new_meta)
         except exception.NotFound, e:
+            LOG.exception('Failed: update metadata for job: %s' % job_id)
             raise webob.exc.HTTPNotFound(explanation=e)
+        LOG.debug('Completed: update metadata for job: %s' % job_id)
         return {'metadata': api_utils.serialize_metadata(updated_meta)}
 
 

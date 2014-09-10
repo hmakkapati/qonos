@@ -23,10 +23,11 @@ from qonos.common import timeutils
 from qonos.common import utils
 import qonos.db
 from qonos.openstack.common.gettextutils import _
+import qonos.openstack.common.log as logging
 from qonos.openstack.common import wsgi
 
-
 CONF = api.CONF
+LOG = logging.getLogger(__name__)
 
 
 class JobsController(object):
@@ -35,11 +36,13 @@ class JobsController(object):
         self.db_api = db_api or qonos.db.get_api()
 
     def list(self, request):
+        LOG.debug('Start: list jobs')
         params = request.params.copy()
 
         try:
             params = utils.get_pagination_limit(params)
         except exception.Invalid as e:
+            LOG.exception('Failed: list jobs')
             raise webob.exc.HTTPBadRequest(explanation=str(e))
 
         if 'status' in params:
@@ -56,6 +59,7 @@ class JobsController(object):
         try:
             jobs = self.db_api.job_get_all(params)
         except exception.NotFound:
+            LOG.exception('Failed: list jobs')
             raise webob.exc.HTTPNotFound()
 
         limit = params.get('limit')
@@ -69,17 +73,21 @@ class JobsController(object):
             api_utils.serialize_job_metadata(job)
 
         links = [{'rel': 'next', 'href': next_page}]
+        LOG.debug('Completed: list jobs')
         return {'jobs': jobs, 'jobs_links': links}
 
     def create(self, request, body):
+        LOG.debug('Start: create job')
         if (body is None or body.get('job') is None or
                 body['job'].get('schedule_id') is None):
+            LOG.debug('Failed: create job')
             raise webob.exc.HTTPBadRequest()
         job = body['job']
 
         try:
             schedule = self.db_api.schedule_get_by_id(job['schedule_id'])
         except exception.NotFound:
+            LOG.exception('Failed: create job')
             raise webob.exc.HTTPNotFound()
 
         # Check integrity of schedule and update next run
@@ -89,6 +97,7 @@ class JobsController(object):
                 expected_next_run = timeutils.parse_isotime(expected_next_run)
                 expected_next_run = expected_next_run.replace(tzinfo=None)
             except ValueError as e:
+                LOG.exception('Failed: create job')
                 msg = _('Invalid "next_run" value. Must be ISO 8601 format')
                 raise webob.exc.HTTPBadRequest(explanation=msg)
 
@@ -99,6 +108,7 @@ class JobsController(object):
                         expected_next_run, next_run)
 
         except exception.NotFound:
+            LOG.exception('Failed: create job')
             msg = _("Specified next run does not match the current next run"
                     " value. This could mean schedule has either changed"
                     "or has already been scheduled since you last expected.")
@@ -136,27 +146,36 @@ class JobsController(object):
         api_utils.serialize_job_metadata(job)
         job = {'job': job}
         utils.generate_notification(None, 'qonos.job.create', job, 'INFO')
+        LOG.debug('Completed: create job: %s' % job['job']['id'])
         return job
 
     def get(self, request, job_id):
+        LOG.debug('Start: get job: %s' % job_id)
         try:
             job = self.db_api.job_get_by_id(job_id)
         except exception.NotFound:
+            LOG.exception('Failed: get job: %s' % job_id)
             raise webob.exc.HTTPNotFound
         utils.serialize_datetimes(job)
         api_utils.serialize_job_metadata(job)
+        LOG.debug('Completed: get job: %s' % job_id)
         return {'job': job}
 
     def delete(self, request, job_id):
+        LOG.debug('Start: delete job: %s' % job_id)
         try:
             self.db_api.job_delete(job_id)
         except exception.NotFound:
+            LOG.exception('Failed: delete job: %s' % job_id)
             msg = _('Job %s could not be found.') % job_id
             raise webob.exc.HTTPNotFound(explanation=msg)
+        LOG.debug('Completed: delete job: %s' % job_id)
 
     def update_status(self, request, job_id, body):
+        LOG.debug('Start: update status of job: %s' % job_id)
         status = body.get('status')
         if not status:
+            LOG.debug('Failed: update status of job: %s' % job_id)
             raise webob.exc.HTTPBadRequest()
 
         values = {'status': status['status'].upper()}
@@ -168,6 +187,7 @@ class JobsController(object):
         try:
             job = self.db_api.job_update(job_id, values)
         except exception.NotFound:
+            LOG.exception('Failed: update status of job: %s' % job_id)
             msg = _('Job %s could not be found.') % job_id
             raise webob.exc.HTTPNotFound(explanation=msg)
 
@@ -176,6 +196,7 @@ class JobsController(object):
             values = self._get_error_values(status, job)
             self.db_api.job_fault_create(values)
 
+        LOG.debug('Completed: update status of job: %s' % job_id)
         return {'status': {'status': job['status'],
                            'timeout': job['timeout']}}
 

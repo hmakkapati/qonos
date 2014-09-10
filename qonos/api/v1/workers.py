@@ -22,9 +22,11 @@ from qonos.common import exception
 from qonos.common import utils
 import qonos.db
 from qonos.openstack.common.gettextutils import _
+import qonos.openstack.common.log as logging
 from qonos.openstack.common import wsgi
 
 
+LOG = logging.getLogger(__name__)
 CONF = api.CONF
 
 
@@ -40,45 +42,59 @@ class WorkersController(object):
         return params
 
     def list(self, request):
+        LOG.debug('Start: list workers')
         params = self._get_request_params(request)
         try:
             params = utils.get_pagination_limit(params)
         except exception.Invalid as e:
+            LOG.exception('Failed: list workers')
             raise webob.exc.HTTPBadRequest(explanation=str(e))
         try:
             workers = self.db_api.worker_get_all(params=params)
         except exception.NotFound:
+            LOG.exception('Failed: list workers')
             raise webob.exc.HTTPNotFound()
         [utils.serialize_datetimes(worker) for worker in workers]
+        LOG.debug('Completed: list workers')
         return {'workers': workers}
 
     def create(self, request, body):
+        LOG.debug('Start: create worker')
         worker = self.db_api.worker_create(body.get('worker'))
         utils.serialize_datetimes(worker)
+        LOG.debug('Completed: create worker')
         return {'worker': worker}
 
     def get(self, request, worker_id):
+        LOG.debug('Start: get worker: %s' % worker_id)
         try:
             worker = self.db_api.worker_get_by_id(worker_id)
         except exception.NotFound:
+            LOG.exception('Failed: get worker: %s' % worker_id)
             msg = _('Worker %s could not be found.') % worker_id
             raise webob.exc.HTTPNotFound(explanation=msg)
         utils.serialize_datetimes(worker)
+        LOG.debug('Completed: get worker: %s' % worker_id)
         return {'worker': worker}
 
     def delete(self, request, worker_id):
+        LOG.debug('Start: delete worker: %s' % worker_id)
         try:
             self.db_api.worker_delete(worker_id)
         except exception.NotFound:
+            LOG.exception('Failed: delete worker: %s' % worker_id)
             msg = _('Worker %s could not be found.') % worker_id
             raise webob.exc.HTTPNotFound(explanation=msg)
+        LOG.debug('Completed: delete worker: %s' % worker_id)
 
     def get_next_job(self, request, worker_id, body):
+        LOG.debug('Start: get next job for worker: %s' % worker_id)
         action = body.get('action')
         try:
             # Check that worker exists
             self.db_api.worker_get_by_id(worker_id)
         except exception.NotFound as e:
+            LOG.exception('Failed: get next job for worker: %s' % worker_id)
             msg = _('Worker %s could not be found.') % worker_id
             raise webob.exc.HTTPNotFound(explanation=msg)
 
@@ -89,6 +105,7 @@ class WorkersController(object):
         if job:
             utils.serialize_datetimes(job)
             api_utils.serialize_job_metadata(job)
+        LOG.debug('Completed: get next job for worker: %s' % worker_id)
         return {'job': job}
 
 

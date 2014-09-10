@@ -22,7 +22,11 @@ from qonos.common import timeutils
 from qonos.common import utils
 import qonos.db
 from qonos.openstack.common.gettextutils import _
+import qonos.openstack.common.log as logging
 from qonos.openstack.common import wsgi
+
+
+LOG = logging.getLogger(__name__)
 
 
 class SchedulesController(object):
@@ -58,11 +62,13 @@ class SchedulesController(object):
         return filter_args
 
     def list(self, request):
+        LOG.debug('Start: list schedules')
         filter_args = self._get_request_params(request)
         try:
             filter_args = utils.get_pagination_limit(filter_args)
             limit = filter_args['limit']
         except exception.Invalid as e:
+            LOG.exception('Failed: list schedules')
             raise webob.exc.HTTPBadRequest(explanation=str(e))
         try:
             schedules = self.db_api.schedule_get_all(filter_args=filter_args)
@@ -71,15 +77,18 @@ class SchedulesController(object):
             else:
                 next_page = None
         except exception.NotFound:
+            LOG.exception('Failed: list schedules')
             msg = _('The specified marker could not be found')
             raise webob.exc.HTTPNotFound(explanation=msg)
         for sched in schedules:
             utils.serialize_datetimes(sched),
             api_utils.serialize_schedule_metadata(sched)
         links = [{'rel': 'next', 'href': next_page}]
+        LOG.debug('Completed: list schedules')
         return {'schedules': schedules, 'schedules_links': links}
 
     def create(self, request, body=None):
+        LOG.debug('Start: create schedule')
         invalid_params = []
         if not body:
             invalid_params.append('request body is empty')
@@ -92,6 +101,7 @@ class SchedulesController(object):
                 invalid_params.append('request body needs "action" entity')
 
         if invalid_params:
+            LOG.debug('Failed: create schedule')
             msg = _('The following errors occured with your request: %s') \
                     % ', '.join(invalid_params)
             raise webob.exc.HTTPBadRequest(explanation=msg)
@@ -104,36 +114,47 @@ class SchedulesController(object):
 
         utils.serialize_datetimes(schedule)
         api_utils.serialize_schedule_metadata(schedule)
+        LOG.debug('Completed: create schedule')
         return {'schedule': schedule}
 
     def get(self, request, schedule_id):
+        LOG.debug('Start: get schedule: %s' % schedule_id)
         try:
             schedule = self.db_api.schedule_get_by_id(schedule_id)
             utils.serialize_datetimes(schedule)
             api_utils.serialize_schedule_metadata(schedule)
         except exception.NotFound:
+            LOG.exception('Failed: get schedule: %s' % schedule_id)
             msg = _('Schedule %s could not be found.') % schedule_id
             raise webob.exc.HTTPNotFound(explanation=msg)
+        LOG.debug('Completed: get schedule: %s' % schedule_id)
         return {'schedule': schedule}
 
     def delete(self, request, schedule_id):
+        LOG.debug('Start: delete schedule:%s' % schedule_id)
         try:
             self.db_api.schedule_delete(schedule_id)
         except exception.NotFound:
+            LOG.exception('Failed: delete schedule: %s' % schedule_id)
             msg = _('Schedule %s could not be found.') % schedule_id
             raise webob.exc.HTTPNotFound(explanation=msg)
+        LOG.debug('Completed: delete schedule: %s' % schedule_id)
 
     def update(self, request, schedule_id, body):
+        LOG.debug('Start: update schedule: %s' % schedule_id)
         if not body:
+            LOG.debug('Failed: update schedule: %s' % schedule_id)
             msg = _('The request body must not be empty')
             raise webob.exc.HTTPBadRequest(explanation=msg)
         elif not 'schedule' in body:
+            LOG.debug('Failed: update schedule: %s' % schedule_id)
             msg = _('The request body must contain a "schedule" entity')
             raise webob.exc.HTTPBadRequest(explanation=msg)
         # NOTE(jculp): only raise if a blank tenant is passed
         # passing no tenant at all is perfectly fine.
         elif ('tenant' in body['schedule'] and not
             body['schedule']['tenant'].strip()):
+            LOG.debug('Failed: update schedule: %s' % schedule_id)
             msg = _('The request body has not specified a "tenant" entity')
             raise webob.exc.HTTPBadRequest(explanation=msg)
 
@@ -144,6 +165,7 @@ class SchedulesController(object):
         try:
             values = api_utils.check_read_only_properties(values)
         except exception.Forbidden as e:
+            LOG.exception('Failed: update schedule: %s' % schedule_id)
             raise webob.exc.HTTPForbidden(explanation=unicode(e))
 
         request_next_run = body['schedule'].get('next_run')
@@ -169,17 +191,20 @@ class SchedulesController(object):
             try:
                 timeutils.parse_isotime(request_next_run)
             except ValueError as e:
+                LOG.exception('Failed: update schedule: %s' % schedule_id)
                 msg = _('Invalid "next_run" value. Must be ISO 8601 format')
                 raise webob.exc.HTTPBadRequest(explanation=msg)
 
         try:
             schedule = self.db_api.schedule_update(schedule_id, values)
         except exception.NotFound:
+            LOG.exception('Failed: update schedule: %s' % schedule_id)
             msg = _('Schedule %s could not be found.') % schedule_id
             raise webob.exc.HTTPNotFound(explanation=msg)
 
         utils.serialize_datetimes(schedule)
         api_utils.serialize_schedule_metadata(schedule)
+        LOG.debug('Completed: update schedule: %s' % schedule_id)
         return {'schedule': schedule}
 
 

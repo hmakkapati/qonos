@@ -8,7 +8,7 @@ import gettext
 import os
 import sys
 
-# If ../glance/__init__.py exists, add ../ to Python search path, so that
+# If ../qonos/__init__.py exists, add ../ to Python search path, so that
 # it will override what happens to be installed in /usr/(local/)lib/python...
 possible_topdir = os.path.normpath(os.path.join(os.path.abspath(sys.argv[0]),
     os.pardir,
@@ -18,9 +18,28 @@ if os.path.exists(os.path.join(possible_topdir, 'qonos', '__init__.py')):
 
 gettext.install('qonos', unicode=1)
 
+from oslo.config import cfg
+
 from qonos.api import api
 from qonos.common import config
+from qonos.common import exception
+from qonos.openstack.common.gettextutils import _
 from qonos.openstack.common import log
+from qonos.openstack.common import wsgi
+
+api_opts = [
+    cfg.BoolOpt('multiprocess', default=False,
+                help=_('Indicates whether multiple API processes should be'
+                       'spawned. If enabled, the number of API processes to'
+                       'spawn will be read from the configuration option '
+                       '"workers" specified under the section "api". If no '
+                       'configuration is specified, number of API processes'
+                       'spawned will be same as that of the number of CPUs'
+                       'available on the host'))
+]
+
+CONF = cfg.CONF
+CONF.register_opts(api_opts, group='api')
 
 
 def fail(returncode, e):
@@ -31,7 +50,14 @@ if __name__ == '__main__':
     try:
         config.parse_args()
         log.setup('qonos')
-        app = api.API(config.load_paste_app())
-        app.run()
+        if CONF.api.multiprocess:
+            server = wsgi.Server()
+            server.start(config.load_paste_app())
+            server.wait()
+        else:
+            app = api.API(config.load_paste_app())
+            app.run()
+    except exception.WorkerCreationFailure as e:
+        fail(2, e)
     except RuntimeError, e:
         fail(1, e)
